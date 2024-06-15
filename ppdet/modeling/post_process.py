@@ -99,7 +99,6 @@ class BBoxPostProcess(nn.Layer):
             if bbox_num[i] == 0:
                 bboxes_i = self.fake_bboxes
                 bbox_num_i = self.fake_bbox_num
-                id_start += 1
             else:
                 bboxes_i = bboxes[id_start:id_start + bbox_num[i], :]
                 bbox_num_i = bbox_num[i]
@@ -155,6 +154,7 @@ class BBoxPostProcess(nn.Layer):
 
 @register
 class MaskPostProcess(object):
+    __shared__ = ['assign_on_cpu']
     """
     refer to:
     https://github.com/facebookresearch/detectron2/layers/mask_ops.py
@@ -162,9 +162,10 @@ class MaskPostProcess(object):
     Get Mask output according to the output from model
     """
 
-    def __init__(self, binary_thresh=0.5):
+    def __init__(self, binary_thresh=0.5, assign_on_cpu=False):
         super(MaskPostProcess, self).__init__()
         self.binary_thresh = binary_thresh
+        self.assign_on_cpu = assign_on_cpu
 
     def paste_mask(self, masks, boxes, im_h, im_w):
         """
@@ -211,6 +212,9 @@ class MaskPostProcess(object):
         if bbox_num == 1 and bboxes[0][0] == -1:
             return pred_result
 
+        if self.assign_on_cpu:
+            device = paddle.device.get_device()
+            paddle.set_device('cpu')
         # TODO: optimize chunk paste
         pred_result = []
         for i in range(bboxes.shape[0]):
@@ -221,6 +225,9 @@ class MaskPostProcess(object):
             pred_mask = paddle.cast(pred_mask, 'int32')
             pred_result.append(pred_mask)
         pred_result = paddle.concat(pred_result)
+        if self.assign_on_cpu:
+            paddle.set_device(device)
+
         return pred_result
 
 
@@ -252,7 +259,7 @@ class S2ANetBBoxPostProcess(nn.Layer):
     def __init__(self, num_classes=15, nms_pre=2000, min_bbox_size=0, nms=None):
         super(S2ANetBBoxPostProcess, self).__init__()
         self.num_classes = num_classes
-        self.nms_pre = paddle.to_tensor(nms_pre)
+        self.nms_pre = nms_pre
         self.min_bbox_size = min_bbox_size
         self.nms = nms
         self.origin_shape_list = []
